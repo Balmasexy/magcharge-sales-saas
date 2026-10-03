@@ -7,5 +7,12 @@
     "dev": "node src/server.js",
     "build": "node --check src/server.js",
     "typecheck": "node --check src/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.3",
+    "jose": "^6.2.12",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.5"
   }
 }

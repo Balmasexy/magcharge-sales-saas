@@ -1,0 +1,2 @@
+-- Initial MagCharge Sales SaaS database schema.
+-- Apply services/api/src/db/schema.sql to a PostgreSQL database.
