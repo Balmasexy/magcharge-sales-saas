@@ -10,6 +10,7 @@ import {
   getBearerToken,
 } from "./middleware/auth.js";
 import { sql } from "./db/client.js";
+import { customerRoute } from "./customers/routes.js";
 
 validateConfig();
 
@@ -134,6 +135,23 @@ const server = http.createServer(async (req, res) => {
         rbac: "ready",
         database,
       });
+    }
+
+    if (
+      req.url.startsWith("/api/customers") &&
+      (req.method === "GET" || req.method === "POST")
+    ) {
+      const user = await authenticate(req, res);
+
+      if (!user) {
+        return;
+      }
+
+      const result = await customerRoute(req, res, user, audit);
+
+      if (result) {
+        return json(res, result.status, result.body);
+      }
     }
 
     if (req.url === "/api/auth/register" && req.method === "POST") {
