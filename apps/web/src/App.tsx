@@ -1131,6 +1131,972 @@ type Product = {
   updated_at: string;
 };
 
+type SaleItem = {
+  id?: string;
+  product_id: string;
+  product_name?: string;
+  sku?: string;
+  quantity: number;
+  unit_price: string | number;
+  total: string | number;
+};
+
+type Sale = {
+  id: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  subtotal: string | number;
+  discount: string | number;
+  total: string | number;
+  payment_method: string;
+  payment_status: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  items?: SaleItem[];
+};
+
+function SalesModule({
+  user,
+}: {
+  user: User;
+}) {
+  const canRead = user.permissions.includes("sales.read");
+  const canWrite = user.permissions.includes("sales.write");
+
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [showNewSale, setShowNewSale] = useState(false);
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+
+  const [customerId, setCustomerId] = useState("");
+  const [productId, setProductId] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [discount, setDiscount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentStatus, setPaymentStatus] = useState("paid");
+  const [notes, setNotes] = useState("");
+
+  const [cart, setCart] = useState<SaleItem[]>([]);
+
+  async function request(
+    path: string,
+    options: RequestInit = {}
+  ) {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+        ...(options.headers || {}),
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || `Request failed with status ${response.status}`
+      );
+    }
+
+    return data;
+  }
+
+  async function loadData() {
+    if (!canRead) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const [salesData, customersData, productsData] =
+        await Promise.all([
+          request("/api/sales?limit=100"),
+          request("/api/customers"),
+          request("/api/products"),
+        ]);
+
+      setSales(salesData.sales || []);
+      setCustomers(customersData.customers || []);
+      setProducts(productsData.products || []);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load sales data"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, [canRead]);
+
+  function resetSaleForm() {
+    setCustomerId("");
+    setProductId("");
+    setQuantity("1");
+    setDiscount("");
+    setPaymentMethod("cash");
+    setPaymentStatus("paid");
+    setNotes("");
+    setCart([]);
+    setError("");
+  }
+
+  function openNewSale() {
+    resetSaleForm();
+    setSuccess("");
+    setSelectedSale(null);
+    setShowNewSale(true);
+  }
+
+  function closeNewSale() {
+    setShowNewSale(false);
+    resetSaleForm();
+  }
+
+  function addProductToCart() {
+    setError("");
+    setSuccess("");
+
+    const product = products.find(
+      (item) => item.id === productId
+    );
+
+    const qty = Number(quantity);
+
+    if (!product) {
+      setError("Select a product first.");
+      return;
+    }
+
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setError("Quantity must be a whole number greater than zero.");
+      return;
+    }
+
+    if (product.status !== "active") {
+      setError("This product is not active.");
+      return;
+    }
+
+    const existing = cart.find(
+      (item) => item.product_id === product.id
+    );
+
+    const existingQuantity = existing
+      ? existing.quantity
+      : 0;
+
+    if (
+      existingQuantity + qty >
+      Number(product.stock_quantity)
+    ) {
+      setError(
+        `Only ${product.stock_quantity} unit(s) of ${product.name} are available.`
+      );
+      return;
+    }
+
+    if (existing) {
+      setCart(
+        cart.map((item) =>
+          item.product_id === product.id
+            ? {
+                ...item,
+                quantity: item.quantity + qty,
+                total:
+                  Number(item.unit_price) *
+                  (item.quantity + qty),
+              }
+            : item
+        )
+      );
+    } else {
+      setCart([
+        ...cart,
+        {
+          product_id: product.id,
+          product_name: product.name,
+          sku: product.sku,
+          quantity: qty,
+          unit_price: Number(product.unit_price),
+          total: Number(product.unit_price) * qty,
+        },
+      ]);
+    }
+
+    setProductId("");
+    setQuantity("1");
+  }
+
+  function updateCartQuantity(
+    productIdToUpdate: string,
+    nextQuantity: number
+  ) {
+    const product = products.find(
+      (item) => item.id === productIdToUpdate
+    );
+
+    if (!product) {
+      return;
+    }
+
+    if (nextQuantity <= 0) {
+      setCart(
+        cart.filter(
+          (item) => item.product_id !== productIdToUpdate
+        )
+      );
+      return;
+    }
+
+    if (nextQuantity > Number(product.stock_quantity)) {
+      setError(
+        `Only ${product.stock_quantity} unit(s) of ${product.name} are available.`
+      );
+      return;
+    }
+
+    setError("");
+
+    setCart(
+      cart.map((item) =>
+        item.product_id === productIdToUpdate
+          ? {
+              ...item,
+              quantity: nextQuantity,
+              total:
+                Number(item.unit_price) * nextQuantity,
+            }
+          : item
+      )
+    );
+  }
+
+  const subtotal = cart.reduce(
+    (sum, item) => sum + Number(item.total),
+    0
+  );
+
+  const discountAmount = Math.max(
+    Number(discount) || 0,
+    0
+  );
+
+  const total = Math.max(
+    subtotal - discountAmount,
+    0
+  );
+
+  async function completeSale(event: FormEvent) {
+    event.preventDefault();
+
+    if (!canWrite) {
+      setError("You do not have permission to create sales.");
+      return;
+    }
+
+    if (!cart.length) {
+      setError("Add at least one product to the sale.");
+      return;
+    }
+
+    if (discountAmount > subtotal) {
+      setError("Discount cannot be greater than the subtotal.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await request("/api/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          customerId: customerId || null,
+          items: cart.map((item) => ({
+            productId: item.product_id,
+            quantity: item.quantity,
+          })),
+          discount: discountAmount,
+          paymentMethod,
+          paymentStatus,
+          notes: notes.trim() || null,
+        }),
+      });
+
+      setSuccess(
+        `Sale completed successfully. Sale ID: ${result.sale.id}`
+      );
+
+      setShowNewSale(false);
+      resetSaleForm();
+
+      await loadData();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to complete sale"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function viewSale(id: string) {
+    setError("");
+
+    try {
+      const data = await request(`/api/sales/${id}`);
+      setSelectedSale(data.sale);
+      setShowNewSale(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load sale details"
+      );
+    }
+  }
+
+  if (!canRead) {
+    return (
+      <section className="module-card">
+        <p className="eyebrow">Sales</p>
+        <h2>Permission denied</h2>
+        <p>
+          Your account does not have permission to view
+          sales.
+        </p>
+      </section>
+    );
+  }
+
+  if (loading) {
+    return (
+      <section className="module-card">
+        <p className="eyebrow">Sales</p>
+        <h2>Loading sales...</h2>
+        <p>Please wait while sales data is loaded.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="module-stack">
+      <div className="module-card">
+        <div className="module-header">
+          <div>
+            <p className="eyebrow">MagCharge Sales</p>
+            <h2>Sales Management</h2>
+            <p>
+              Create sales, track payments and automatically
+              reduce inventory.
+            </p>
+          </div>
+
+          {canWrite && (
+            <button
+              className="primary-button"
+              onClick={openNewSale}
+            >
+              + New Sale
+            </button>
+          )}
+        </div>
+
+        {success && (
+          <div className="success-box">{success}</div>
+        )}
+
+        {error && (
+          <div className="error-box">{error}</div>
+        )}
+
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span>Total sales</span>
+            <strong>{sales.length}</strong>
+            <small>Recent transactions</small>
+          </div>
+
+          <div className="stat-card">
+            <span>Sales value</span>
+            <strong>
+              ₦
+              {sales
+                .reduce(
+                  (sum, sale) => sum + Number(sale.total),
+                  0
+                )
+                .toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+            </strong>
+            <small>Loaded sales</small>
+          </div>
+
+          <div className="stat-card">
+            <span>Customers</span>
+            <strong>{customers.length}</strong>
+            <small>Available customers</small>
+          </div>
+
+          <div className="stat-card">
+            <span>Products</span>
+            <strong>{products.length}</strong>
+            <small>Inventory products</small>
+          </div>
+        </div>
+      </div>
+
+      {showNewSale && canWrite && (
+        <div className="module-card">
+          <div className="module-header">
+            <div>
+              <p className="eyebrow">Transaction</p>
+              <h2>New Sale</h2>
+            </div>
+
+            <button
+              className="secondary-button"
+              onClick={closeNewSale}
+            >
+              Cancel
+            </button>
+          </div>
+
+          <form onSubmit={completeSale}>
+            <div className="form-grid">
+              <label>
+                Customer
+                <select
+                  value={customerId}
+                  onChange={(event) =>
+                    setCustomerId(event.target.value)
+                  }
+                >
+                  <option value="">
+                    Walk-in customer
+                  </option>
+
+                  {customers
+                    .filter(
+                      (customer) =>
+                        customer.status === "active"
+                    )
+                    .map((customer) => (
+                      <option
+                        key={customer.id}
+                        value={customer.id}
+                      >
+                        {customer.full_name} —{" "}
+                        {customer.customer_code}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label>
+                Payment method
+                <select
+                  value={paymentMethod}
+                  onChange={(event) =>
+                    setPaymentMethod(event.target.value)
+                  }
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">
+                    Bank Transfer
+                  </option>
+                  <option value="card">Card</option>
+                  <option value="pos">POS</option>
+                </select>
+              </label>
+
+              <label>
+                Payment status
+                <select
+                  value={paymentStatus}
+                  onChange={(event) =>
+                    setPaymentStatus(event.target.value)
+                  }
+                >
+                  <option value="paid">Paid</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
+
+              <label>
+                Discount
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={discount}
+                  onChange={(event) =>
+                    setDiscount(event.target.value)
+                  }
+                  placeholder="0.00"
+                />
+              </label>
+            </div>
+
+            <div className="form-grid">
+              <label>
+                Product
+                <select
+                  value={productId}
+                  onChange={(event) =>
+                    setProductId(event.target.value)
+                  }
+                >
+                  <option value="">
+                    Select product
+                  </option>
+
+                  {products
+                    .filter(
+                      (product) =>
+                        product.status === "active" &&
+                        Number(product.stock_quantity) > 0
+                    )
+                    .map((product) => (
+                      <option
+                        key={product.id}
+                        value={product.id}
+                      >
+                        {product.name} — {product.sku} —{" "}
+                        ₦
+                        {Number(
+                          product.unit_price
+                        ).toLocaleString()} — Stock:{" "}
+                        {product.stock_quantity}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label>
+                Quantity
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={quantity}
+                  onChange={(event) =>
+                    setQuantity(event.target.value)
+                  }
+                />
+              </label>
+
+              <div className="form-action">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={addProductToCart}
+                >
+                  Add product
+                </button>
+              </div>
+            </div>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th>Price</th>
+                    <th>Qty</th>
+                    <th>Total</th>
+                    <th></th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {!cart.length ? (
+                    <tr>
+                      <td colSpan={6}>
+                        <div className="empty-state">
+                          <strong>No products added</strong>
+                          <span>
+                            Select a product and add it to
+                            this sale.
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    cart.map((item) => (
+                      <tr key={item.product_id}>
+                        <td>{item.product_name}</td>
+                        <td>{item.sku}</td>
+                        <td>
+                          ₦
+                          {Number(
+                            item.unit_price
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td>
+                          <input
+                            className="table-input"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={item.quantity}
+                            onChange={(event) =>
+                              updateCartQuantity(
+                                item.product_id,
+                                Number(event.target.value)
+                              )
+                            }
+                          />
+                        </td>
+                        <td>
+                          ₦
+                          {Number(
+                            item.total
+                          ).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() =>
+                              updateCartQuantity(
+                                item.product_id,
+                                0
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="sale-summary">
+              <div>
+                <span>Subtotal</span>
+                <strong>
+                  ₦
+                  {subtotal.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </div>
+
+              <div>
+                <span>Discount</span>
+                <strong>
+                  ₦
+                  {discountAmount.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </div>
+
+              <div className="sale-total">
+                <span>Total</span>
+                <strong>
+                  ₦
+                  {total.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
+                </strong>
+              </div>
+            </div>
+
+            <label>
+              Notes
+              <textarea
+                value={notes}
+                onChange={(event) =>
+                  setNotes(event.target.value)
+                }
+                placeholder="Optional sale notes"
+                rows={3}
+              />
+            </label>
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={closeNewSale}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={saving || !cart.length}
+              >
+                {saving
+                  ? "Completing sale..."
+                  : "Complete Sale"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {selectedSale && (
+        <div className="module-card">
+          <div className="module-header">
+            <div>
+              <p className="eyebrow">Sale Details</p>
+              <h2>
+                {selectedSale.id.slice(0, 8)}
+              </h2>
+            </div>
+
+            <button
+              className="secondary-button"
+              onClick={() => setSelectedSale(null)}
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="detail-grid">
+            <div>
+              <span>Customer</span>
+              <strong>
+                {selectedSale.customer_name ||
+                  "Walk-in customer"}
+              </strong>
+            </div>
+
+            <div>
+              <span>Payment</span>
+              <strong>
+                {selectedSale.payment_method}
+              </strong>
+            </div>
+
+            <div>
+              <span>Status</span>
+              <strong>
+                {selectedSale.payment_status}
+              </strong>
+            </div>
+
+            <div>
+              <span>Date</span>
+              <strong>
+                {new Date(
+                  selectedSale.created_at
+                ).toLocaleString()}
+              </strong>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>SKU</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {(selectedSale.items || []).map(
+                  (item) => (
+                    <tr key={item.id || item.product_id}>
+                      <td>{item.product_name}</td>
+                      <td>{item.sku}</td>
+                      <td>{item.quantity}</td>
+                      <td>
+                        ₦
+                        {Number(
+                          item.unit_price
+                        ).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td>
+                        ₦
+                        {Number(
+                          item.total
+                        ).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="sale-summary">
+            <div>
+              <span>Subtotal</span>
+              <strong>
+                ₦
+                {Number(
+                  selectedSale.subtotal
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </strong>
+            </div>
+
+            <div>
+              <span>Discount</span>
+              <strong>
+                ₦
+                {Number(
+                  selectedSale.discount
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </strong>
+            </div>
+
+            <div className="sale-total">
+              <span>Total</span>
+              <strong>
+                ₦
+                {Number(
+                  selectedSale.total
+                ).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                })}
+              </strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="module-card">
+        <div className="module-header">
+          <div>
+            <p className="eyebrow">History</p>
+            <h2>Recent Sales</h2>
+          </div>
+
+          <button
+            className="secondary-button"
+            onClick={loadData}
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Total</th>
+                <th>Payment</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th></th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {!sales.length ? (
+                <tr>
+                  <td colSpan={6}>
+                    <div className="empty-state">
+                      <strong>No sales yet</strong>
+                      <span>
+                        Create your first sale to see it
+                        here.
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                sales.map((sale) => (
+                  <tr key={sale.id}>
+                    <td>
+                      {sale.customer_name ||
+                        "Walk-in customer"}
+                    </td>
+                    <td>
+                      ₦
+                      {Number(
+                        sale.total
+                      ).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td>
+                      {sale.payment_method}
+                    </td>
+                    <td>
+                      <span className="status-pill">
+                        {sale.payment_status}
+                      </span>
+                    </td>
+                    <td>
+                      {new Date(
+                        sale.created_at
+                      ).toLocaleDateString()}
+                    </td>
+                    <td>
+                      <button
+                        className="secondary-button"
+                        onClick={() =>
+                          viewSale(sale.id)
+                        }
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ProductsModule({
   user,
 }: {
@@ -1934,6 +2900,8 @@ function Dashboard({
               </article>
             </section>
           </>
+        ) : active === "Sales" ? (
+          <SalesModule user={user} />
         ) : active === "Customers" ? (
           <CustomersModule user={user} />
         ) : active === "Inventory" ? (
