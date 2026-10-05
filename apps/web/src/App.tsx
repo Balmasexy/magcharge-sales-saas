@@ -224,6 +224,8 @@ function CustomersModule({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const [form, setForm] = useState({
     fullName: "",
@@ -235,6 +237,7 @@ function CustomersModule({
     state: "",
     country: "Nigeria",
     notes: "",
+    status: "active",
   });
 
   async function request(
@@ -320,6 +323,179 @@ function CustomersModule({
     }));
   }
 
+  function populateForm(customer: Customer) {
+    setForm({
+      fullName: customer.full_name || "",
+      email: customer.email || "",
+      phone: customer.phone || "",
+      companyName: customer.company_name || "",
+      address: customer.address || "",
+      city: customer.city || "",
+      state: customer.state || "",
+      country: customer.country || "Nigeria",
+      notes: customer.notes || "",
+      status: customer.status || "active",
+    });
+  }
+
+  function startEditing(customer: Customer) {
+    populateForm(customer);
+    setEditing(true);
+    setShowForm(false);
+    setError("");
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    if (selected) {
+      populateForm(selected);
+    }
+  }
+
+  async function updateCustomer(event: FormEvent) {
+    event.preventDefault();
+
+    if (!selected) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const data = await request(
+        `/api/customers/${selected.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            fullName: form.fullName,
+            email: form.email || undefined,
+            phone: form.phone || undefined,
+            companyName:
+              form.companyName || undefined,
+            address: form.address || undefined,
+            city: form.city || undefined,
+            state: form.state || undefined,
+            country: form.country || "Nigeria",
+            notes: form.notes || undefined,
+            status: form.status || "active",
+          }),
+        }
+      );
+
+      const customer = data?.customer || data;
+
+      if (!customer?.id) {
+        throw new Error("Customer update failed");
+      }
+
+      setCustomers((current) =>
+        current.map((item) =>
+          item.id === customer.id ? customer : item
+        )
+      );
+
+      setSelected(customer);
+      setEditing(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to update customer"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function changeCustomerStatus(status: string) {
+    if (!selected) return;
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      const data = await request(
+        `/api/customers/${selected.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            fullName: selected.full_name,
+            email: selected.email || undefined,
+            phone: selected.phone || undefined,
+            companyName:
+              selected.company_name || undefined,
+            address: selected.address || undefined,
+            city: selected.city || undefined,
+            state: selected.state || undefined,
+            country: selected.country || "Nigeria",
+            notes: selected.notes || undefined,
+            status,
+          }),
+        }
+      );
+
+      const customer = data?.customer || data;
+
+      if (!customer?.id) {
+        throw new Error("Customer status update failed");
+      }
+
+      setCustomers((current) =>
+        current.map((item) =>
+          item.id === customer.id ? customer : item
+        )
+      );
+
+      setSelected(customer);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to update customer status"
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function deleteCustomer() {
+    if (!selected) return;
+
+    const confirmed = window.confirm(
+      `Delete ${selected.full_name}? This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setActionLoading(true);
+    setError("");
+
+    try {
+      await request(
+        `/api/customers/${selected.id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      setCustomers((current) =>
+        current.filter(
+          (item) => item.id !== selected.id
+        )
+      );
+
+      setSelected(null);
+      setEditing(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to delete customer"
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function createCustomer(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -365,9 +541,11 @@ function CustomersModule({
         state: "",
         country: "Nigeria",
         notes: "",
+        status: "active",
       });
 
       setShowForm(false);
+      setEditing(false);
     } catch (err) {
       setError(
         err instanceof Error
@@ -658,55 +836,270 @@ function CustomersModule({
                 </span>
               </div>
 
-              <div className="detail-grid">
-                <div>
-                  <span>Email</span>
-                  <strong>
-                    {selected.email || "—"}
-                  </strong>
-                </div>
+              {editing && canWrite ? (
+                <form
+                  className="customer-form"
+                  onSubmit={updateCustomer}
+                >
+                  <div className="form-grid">
+                    <label>
+                      Full name *
+                      <input
+                        value={form.fullName}
+                        onChange={(event) =>
+                          updateField(
+                            "fullName",
+                            event.target.value
+                          )
+                        }
+                        required
+                      />
+                    </label>
 
-                <div>
-                  <span>Phone</span>
-                  <strong>
-                    {selected.phone || "—"}
-                  </strong>
-                </div>
+                    <label>
+                      Company
+                      <input
+                        value={form.companyName}
+                        onChange={(event) =>
+                          updateField(
+                            "companyName",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </label>
 
-                <div>
-                  <span>Company</span>
-                  <strong>
-                    {selected.company_name || "—"}
-                  </strong>
-                </div>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={form.email}
+                        onChange={(event) =>
+                          updateField(
+                            "email",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </label>
 
-                <div>
-                  <span>Location</span>
-                  <strong>
-                    {[
-                      selected.city,
-                      selected.state,
-                      selected.country,
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "—"}
-                  </strong>
-                </div>
+                    <label>
+                      Phone
+                      <input
+                        value={form.phone}
+                        onChange={(event) =>
+                          updateField(
+                            "phone",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </label>
 
-                <div className="full-width">
-                  <span>Address</span>
-                  <strong>
-                    {selected.address || "—"}
-                  </strong>
-                </div>
+                    <label>
+                      City
+                      <input
+                        value={form.city}
+                        onChange={(event) =>
+                          updateField(
+                            "city",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </label>
 
-                <div className="full-width">
-                  <span>Notes</span>
-                  <strong>
-                    {selected.notes || "—"}
-                  </strong>
-                </div>
-              </div>
+                    <label>
+                      State
+                      <input
+                        value={form.state}
+                        onChange={(event) =>
+                          updateField(
+                            "state",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Country
+                      <input
+                        value={form.country}
+                        onChange={(event) =>
+                          updateField(
+                            "country",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Status
+                      <select
+                        value={form.status}
+                        onChange={(event) =>
+                          updateField(
+                            "status",
+                            event.target.value
+                          )
+                        }
+                      >
+                        <option value="active">
+                          Active
+                        </option>
+                        <option value="inactive">
+                          Inactive
+                        </option>
+                        <option value="blocked">
+                          Blocked
+                        </option>
+                      </select>
+                    </label>
+
+                    <label className="full-width">
+                      Address
+                      <input
+                        value={form.address}
+                        onChange={(event) =>
+                          updateField(
+                            "address",
+                            event.target.value
+                          )
+                        }
+                      />
+                    </label>
+
+                    <label className="full-width">
+                      Notes
+                      <textarea
+                        value={form.notes}
+                        onChange={(event) =>
+                          updateField(
+                            "notes",
+                            event.target.value
+                          )
+                        }
+                        rows={3}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="form-actions">
+                    <button
+                      type="submit"
+                      className="primary-button"
+                      disabled={saving}
+                    >
+                      {saving
+                        ? "Saving..."
+                        : "Save changes"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={cancelEditing}
+                      disabled={saving}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="detail-grid">
+                    <div>
+                      <span>Email</span>
+                      <strong>
+                        {selected.email || "—"}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Phone</span>
+                      <strong>
+                        {selected.phone || "—"}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Company</span>
+                      <strong>
+                        {selected.company_name || "—"}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Location</span>
+                      <strong>
+                        {[
+                          selected.city,
+                          selected.state,
+                          selected.country,
+                        ]
+                          .filter(Boolean)
+                          .join(", ") || "—"}
+                      </strong>
+                    </div>
+
+                    <div className="full-width">
+                      <span>Address</span>
+                      <strong>
+                        {selected.address || "—"}
+                      </strong>
+                    </div>
+
+                    <div className="full-width">
+                      <span>Notes</span>
+                      <strong>
+                        {selected.notes || "—"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {canWrite && (
+                    <div className="form-actions">
+                      <button
+                        className="primary-button"
+                        onClick={() =>
+                          startEditing(selected)
+                        }
+                        disabled={actionLoading}
+                      >
+                        Edit customer
+                      </button>
+
+                      <button
+                        className="secondary-button"
+                        onClick={() =>
+                          changeCustomerStatus(
+                            selected.status === "active"
+                              ? "inactive"
+                              : "active"
+                          )
+                        }
+                        disabled={actionLoading}
+                      >
+                        {actionLoading
+                          ? "Updating..."
+                          : selected.status === "active"
+                            ? "Deactivate"
+                            : "Activate"}
+                      </button>
+
+                      <button
+                        className="secondary-button"
+                        onClick={deleteCustomer}
+                        disabled={actionLoading}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           ) : (
             <div className="empty-state">
