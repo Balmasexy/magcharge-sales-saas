@@ -1,5 +1,6 @@
 const API_BASE =
-  import.meta.env.VITE_API_URL || "http://localhost:4000";
+  import.meta.env.VITE_API_URL ||
+  "https://magcharge-sales-api.onrender.com";
 
 const TOKEN_KEY = "magcharge_access_token";
 
