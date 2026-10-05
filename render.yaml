@@ -5,7 +5,7 @@ services:
     plan: free
     rootDir: .
     buildCommand: pnpm install --frozen-lockfile && pnpm --filter @magcharge/api build
-    startCommand: pnpm --filter @magcharge/api start
+    startCommand: pnpm --filter @magcharge/api migrate && pnpm --filter @magcharge/api start
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL

@@ -7,7 +7,8 @@
     "dev": "node src/server.js",
     "build": "node --check src/server.js",
     "typecheck": "node --check src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "migrate": "node src/db/migrate.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
