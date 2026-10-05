@@ -139,7 +139,7 @@ const server = http.createServer(async (req, res) => {
 
     if (
       req.url.startsWith("/api/customers") &&
-      (req.method === "GET" || req.method === "POST")
+      ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(req.method)
     ) {
       const user = await authenticate(req, res);
 

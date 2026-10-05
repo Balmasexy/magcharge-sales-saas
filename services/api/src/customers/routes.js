@@ -2,6 +2,8 @@ import {
   listCustomers,
   getCustomer,
   createCustomer,
+  updateCustomer,
+  deleteCustomer,
 } from "./service.js";
 
 function validationError(message) {
@@ -10,10 +12,13 @@ function validationError(message) {
   return error;
 }
 
-function validateCustomer(body) {
+function validateCustomer(body, { requireName = true } = {}) {
   const fullName = String(body.fullName || "").trim();
 
-  if (fullName.length < 2 || fullName.length > 160) {
+  if (
+    requireName &&
+    (fullName.length < 2 || fullName.length > 160)
+  ) {
     throw validationError(
       "Customer name must be between 2 and 160 characters"
     );
@@ -23,6 +28,12 @@ function validateCustomer(body) {
 
   if (email && !email.includes("@")) {
     throw validationError("Customer email is invalid");
+  }
+
+  const status = String(body.status || "active").trim();
+
+  if (!["active", "inactive", "blocked"].includes(status)) {
+    throw validationError("Customer status is invalid");
   }
 
   return {
@@ -35,6 +46,7 @@ function validateCustomer(body) {
     state: String(body.state || "").trim(),
     country: String(body.country || "Nigeria").trim(),
     notes: String(body.notes || "").trim(),
+    status,
   };
 }
 
@@ -49,7 +61,15 @@ async function readBody(req) {
     return {};
   }
 
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw validationError("Request body must contain valid JSON");
+  }
+}
+
+function customerId(url) {
+  return url.pathname.slice("/api/customers/".length).trim();
 }
 
 export async function customerRoute(req, user, audit) {
@@ -77,7 +97,8 @@ export async function customerRoute(req, user, audit) {
 
   if (
     req.method === "GET" &&
-    url.pathname.startsWith("/api/customers/")
+    url.pathname.startsWith("/api/customers/") &&
+    customerId(url)
   ) {
     if (!user.permissions.includes("customers.read")) {
       return {
@@ -86,8 +107,7 @@ export async function customerRoute(req, user, audit) {
       };
     }
 
-    const id = url.pathname.split("/").pop();
-    const customer = await getCustomer(id);
+    const customer = await getCustomer(customerId(url));
 
     if (!customer) {
       return {
@@ -135,6 +155,91 @@ export async function customerRoute(req, user, audit) {
 
     return {
       status: 201,
+      body: { customer },
+    };
+  }
+
+  if (
+    (req.method === "PUT" || req.method === "PATCH") &&
+    url.pathname.startsWith("/api/customers/") &&
+    customerId(url)
+  ) {
+    if (!user.permissions.includes("customers.write")) {
+      return {
+        status: 403,
+        body: { error: "Customer write permission required" },
+      };
+    }
+
+    const id = customerId(url);
+    const existing = await getCustomer(id);
+
+    if (!existing) {
+      return {
+        status: 404,
+        body: { error: "Customer not found" },
+      };
+    }
+
+    const body = await readBody(req);
+    const input = validateCustomer(body);
+
+    const customer = await updateCustomer(id, input);
+
+    await audit(
+      user.id,
+      "customer.update",
+      "customer",
+      customer.id,
+      {
+        customerCode: customer.customer_code,
+        name: customer.full_name,
+      },
+      req.socket.remoteAddress || null
+    );
+
+    return {
+      status: 200,
+      body: { customer },
+    };
+  }
+
+  if (
+    req.method === "DELETE" &&
+    url.pathname.startsWith("/api/customers/") &&
+    customerId(url)
+  ) {
+    if (!user.permissions.includes("customers.write")) {
+      return {
+        status: 403,
+        body: { error: "Customer write permission required" },
+      };
+    }
+
+    const id = customerId(url);
+    const customer = await deleteCustomer(id);
+
+    if (!customer) {
+      return {
+        status: 404,
+        body: { error: "Customer not found" },
+      };
+    }
+
+    await audit(
+      user.id,
+      "customer.delete",
+      "customer",
+      customer.id,
+      {
+        customerCode: customer.customer_code,
+        name: customer.full_name,
+      },
+      req.socket.remoteAddress || null
+    );
+
+    return {
+      status: 200,
       body: { customer },
     };
   }

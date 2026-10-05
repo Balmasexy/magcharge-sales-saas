@@ -115,3 +115,63 @@ export async function createCustomer({
 
   return rows[0];
 }
+
+export async function updateCustomer(
+  id,
+  {
+    fullName,
+    email,
+    phone,
+    companyName,
+    address,
+    city,
+    state,
+    country,
+    notes,
+    status,
+  }
+) {
+  const rows = await sql`
+    UPDATE customers
+    SET
+      full_name = ${fullName},
+      email = ${email || null},
+      phone = ${phone || null},
+      company_name = ${companyName || null},
+      address = ${address || null},
+      city = ${city || null},
+      state = ${state || null},
+      country = ${country || "Nigeria"},
+      notes = ${notes || null},
+      status = ${status || "active"},
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING
+      id,
+      customer_code,
+      full_name,
+      email,
+      phone,
+      company_name,
+      address,
+      city,
+      state,
+      country,
+      notes,
+      status,
+      created_at,
+      updated_at
+  `;
+
+  return rows[0] || null;
+}
+
+export async function deleteCustomer(id) {
+  const rows = await sql`
+    DELETE FROM customers
+    WHERE id = ${id}
+    RETURNING id, customer_code, full_name
+  `;
+
+  return rows[0] || null;
+}
