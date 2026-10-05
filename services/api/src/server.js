@@ -174,7 +174,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const result = await customerRoute(req, res, user, audit);
+      const result = await customerRoute(req, user, audit);
 
       if (result) {
         return json(res, result.status, result.body);
