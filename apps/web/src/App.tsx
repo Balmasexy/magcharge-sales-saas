@@ -1115,6 +1115,677 @@ function CustomersModule({
   );
 }
 
+
+type Product = {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  unit_price: string | number;
+  cost_price: string | number;
+  stock_quantity: number;
+  reorder_level: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function ProductsModule({
+  user,
+}: {
+  user: User;
+}) {
+  const canWrite = user.permissions.includes("inventory.write");
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selected, setSelected] = useState<Product | null>(null);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const emptyForm = {
+    sku: "",
+    name: "",
+    description: "",
+    category: "",
+    unitPrice: "",
+    costPrice: "",
+    stockQuantity: "0",
+    reorderLevel: "0",
+    status: "active",
+  };
+
+  const [form, setForm] = useState(emptyForm);
+
+  async function request(
+    path: string,
+    options: RequestInit = {}
+  ) {
+    const token = getToken();
+
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+        ...(options.headers || {}),
+      },
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error ||
+          data?.message ||
+          `Request failed (${response.status})`
+      );
+    }
+
+    return data;
+  }
+
+  async function loadProducts() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const query = search.trim()
+        ? `?search=${encodeURIComponent(search.trim())}`
+        : "";
+
+      const data = await request(`/api/products${query}`);
+
+      setProducts(
+        Array.isArray(data)
+          ? data
+          : Array.isArray(data?.products)
+            ? data.products
+            : []
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load products"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  function updateField(
+    field: keyof typeof form,
+    value: string
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function resetForm() {
+    setForm(emptyForm);
+    setEditing(false);
+    setShowForm(false);
+  }
+
+  function startEdit(product: Product) {
+    setSelected(product);
+    setForm({
+      sku: product.sku || "",
+      name: product.name || "",
+      description: product.description || "",
+      category: product.category || "",
+      unitPrice: String(product.unit_price ?? ""),
+      costPrice: String(product.cost_price ?? ""),
+      stockQuantity: String(product.stock_quantity ?? 0),
+      reorderLevel: String(product.reorder_level ?? 0),
+      status: product.status || "active",
+    });
+    setEditing(true);
+    setShowForm(true);
+    setError("");
+  }
+
+  async function saveProduct(event: FormEvent) {
+    event.preventDefault();
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const payload = {
+        sku: form.sku.trim(),
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        category: form.category.trim() || undefined,
+        unitPrice: Number(form.unitPrice),
+        costPrice: Number(form.costPrice),
+        stockQuantity: Number(form.stockQuantity),
+        reorderLevel: Number(form.reorderLevel),
+        status: form.status,
+      };
+
+      const data = await request(
+        editing && selected
+          ? `/api/products/${selected.id}`
+          : "/api/products",
+        {
+          method: editing && selected ? "PUT" : "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const product = data?.product || data;
+
+      if (!product?.id) {
+        throw new Error("Product save failed");
+      }
+
+      if (editing) {
+        setProducts((current) =>
+          current.map((item) =>
+            item.id === product.id ? product : item
+          )
+        );
+      } else {
+        setProducts((current) => [product, ...current]);
+      }
+
+      setSelected(product);
+      resetForm();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to save product"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteProduct(product: Product) {
+    if (
+      !window.confirm(
+        `Delete ${product.name} (${product.sku})? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await request(`/api/products/${product.id}`, {
+        method: "DELETE",
+      });
+
+      setProducts((current) =>
+        current.filter((item) => item.id !== product.id)
+      );
+
+      if (selected?.id === product.id) {
+        setSelected(null);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to delete product"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const lowStock = products.filter(
+    (product) =>
+      product.status === "active" &&
+      Number(product.stock_quantity) <=
+        Number(product.reorder_level)
+  ).length;
+
+  return (
+    <section className="customers-module">
+      <div className="module-toolbar">
+        <div>
+          <p className="eyebrow">Inventory Management</p>
+          <h2>Products</h2>
+          <p>
+            Manage MagCharge products, pricing and stock levels.
+          </p>
+        </div>
+
+        {canWrite && (
+          <button
+            className="primary-button"
+            onClick={() => {
+              setSelected(null);
+              setForm(emptyForm);
+              setEditing(false);
+              setShowForm((current) => !current);
+            }}
+          >
+            {showForm ? "Close form" : "+ Add product"}
+          </button>
+        )}
+      </div>
+
+      <section className="stats-grid">
+        <div className="stat-card">
+          <span>Total products</span>
+          <strong>{products.length}</strong>
+          <small>Products in catalogue</small>
+        </div>
+
+        <div className="stat-card">
+          <span>Active</span>
+          <strong>
+            {products.filter((p) => p.status === "active").length}
+          </strong>
+          <small>Currently available</small>
+        </div>
+
+        <div className="stat-card">
+          <span>Low stock</span>
+          <strong>{lowStock}</strong>
+          <small>At or below reorder level</small>
+        </div>
+
+        <div className="stat-card">
+          <span>Inventory units</span>
+          <strong>
+            {products.reduce(
+              (total, product) =>
+                total + Number(product.stock_quantity || 0),
+              0
+            )}
+          </strong>
+          <small>Total units in stock</small>
+        </div>
+      </section>
+
+      {error && <div className="error-box">{error}</div>}
+
+      {showForm && canWrite && (
+        <form className="customer-form" onSubmit={saveProduct}>
+          <div className="form-heading">
+            <div>
+              <p className="eyebrow">
+                {editing ? "Edit product" : "New product"}
+              </p>
+              <h3>
+                {editing ? "Update product" : "Add product"}
+              </h3>
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              SKU *
+              <input
+                value={form.sku}
+                onChange={(event) =>
+                  updateField("sku", event.target.value)
+                }
+                placeholder="MAG-001"
+                required
+              />
+            </label>
+
+            <label>
+              Product name *
+              <input
+                value={form.name}
+                onChange={(event) =>
+                  updateField("name", event.target.value)
+                }
+                placeholder="MagCharge Magnetic Charger"
+                required
+              />
+            </label>
+
+            <label>
+              Category
+              <input
+                value={form.category}
+                onChange={(event) =>
+                  updateField("category", event.target.value)
+                }
+                placeholder="Chargers"
+              />
+            </label>
+
+            <label>
+              Selling price *
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.unitPrice}
+                onChange={(event) =>
+                  updateField("unitPrice", event.target.value)
+                }
+                placeholder="25000"
+                required
+              />
+            </label>
+
+            <label>
+              Cost price *
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.costPrice}
+                onChange={(event) =>
+                  updateField("costPrice", event.target.value)
+                }
+                placeholder="18000"
+                required
+              />
+            </label>
+
+            <label>
+              Stock quantity *
+              <input
+                type="number"
+                min="0"
+                value={form.stockQuantity}
+                onChange={(event) =>
+                  updateField(
+                    "stockQuantity",
+                    event.target.value
+                  )
+                }
+                required
+              />
+            </label>
+
+            <label>
+              Reorder level *
+              <input
+                type="number"
+                min="0"
+                value={form.reorderLevel}
+                onChange={(event) =>
+                  updateField(
+                    "reorderLevel",
+                    event.target.value
+                  )
+                }
+                required
+              />
+            </label>
+
+            <label>
+              Status
+              <select
+                value={form.status}
+                onChange={(event) =>
+                  updateField("status", event.target.value)
+                }
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+
+            <label className="full-width">
+              Description
+              <textarea
+                value={form.description}
+                onChange={(event) =>
+                  updateField(
+                    "description",
+                    event.target.value
+                  )
+                }
+                placeholder="Product description"
+                rows={3}
+              />
+            </label>
+          </div>
+
+          <div className="form-actions">
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={saving}
+            >
+              {saving
+                ? "Saving..."
+                : editing
+                  ? "Save changes"
+                  : "Create product"}
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={resetForm}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      <form
+        className="customer-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          loadProducts();
+        }}
+      >
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search SKU, product name or category..."
+        />
+
+        <button type="submit" className="secondary-button">
+          Search
+        </button>
+
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            setSearch("");
+            setTimeout(loadProducts, 0);
+          }}
+        >
+          Reset
+        </button>
+      </form>
+
+      <div className="customer-layout">
+        <div className="customer-list-card">
+          <div className="list-heading">
+            <strong>Product catalogue</strong>
+            <span>{products.length}</span>
+          </div>
+
+          {loading ? (
+            <div className="empty-state">
+              Loading products...
+            </div>
+          ) : products.length === 0 ? (
+            <div className="empty-state">
+              <strong>No products found</strong>
+              <span>
+                Add your first MagCharge product to begin.
+              </span>
+            </div>
+          ) : (
+            <div className="customer-list">
+              {products.map((product) => {
+                const isLow =
+                  Number(product.stock_quantity) <=
+                  Number(product.reorder_level);
+
+                return (
+                  <button
+                    key={product.id}
+                    className={
+                      selected?.id === product.id
+                        ? "customer-row selected"
+                        : "customer-row"
+                    }
+                    onClick={() => setSelected(product)}
+                  >
+                    <div>
+                      <strong>{product.name}</strong>
+                      <span>
+                        {product.sku} ·{" "}
+                        {product.category || "Uncategorised"}
+                      </span>
+                    </div>
+
+                    <span
+                      className={`customer-status ${
+                        isLow ? "blocked" : product.status
+                      }`}
+                    >
+                      {isLow
+                        ? "Low stock"
+                        : product.status}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="customer-detail-card">
+          {selected ? (
+            <>
+              <div className="detail-heading">
+                <div>
+                  <p className="eyebrow">{selected.sku}</p>
+                  <h3>{selected.name}</h3>
+                </div>
+
+                <span
+                  className={`customer-status ${
+                    Number(selected.stock_quantity) <=
+                    Number(selected.reorder_level)
+                      ? "blocked"
+                      : selected.status
+                  }`}
+                >
+                  {Number(selected.stock_quantity) <=
+                  Number(selected.reorder_level)
+                    ? "Low stock"
+                    : selected.status}
+                </span>
+              </div>
+
+              <div className="detail-grid">
+                <div>
+                  <span>Category</span>
+                  <strong>
+                    {selected.category || "—"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Selling price</span>
+                  <strong>
+                    ₦{Number(selected.unit_price).toLocaleString()}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Cost price</span>
+                  <strong>
+                    ₦{Number(selected.cost_price).toLocaleString()}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Stock</span>
+                  <strong>
+                    {selected.stock_quantity} units
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Reorder level</span>
+                  <strong>
+                    {selected.reorder_level} units
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Margin</span>
+                  <strong>
+                    ₦
+                    {(
+                      Number(selected.unit_price) -
+                      Number(selected.cost_price)
+                    ).toLocaleString()}
+                  </strong>
+                </div>
+
+                <div className="full-width">
+                  <span>Description</span>
+                  <strong>
+                    {selected.description || "—"}
+                  </strong>
+                </div>
+              </div>
+
+              {canWrite && (
+                <div className="form-actions">
+                  <button
+                    className="primary-button"
+                    onClick={() => startEdit(selected)}
+                    disabled={saving}
+                  >
+                    Edit product
+                  </button>
+
+                  <button
+                    className="secondary-button"
+                    onClick={() => deleteProduct(selected)}
+                    disabled={saving}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="empty-state">
+              <strong>Select a product</strong>
+              <span>
+                Product details will appear here.
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Dashboard({
   user,
   onLogout,
@@ -1265,6 +1936,8 @@ function Dashboard({
           </>
         ) : active === "Customers" ? (
           <CustomersModule user={user} />
+        ) : active === "Inventory" ? (
+          <ProductsModule user={user} />
         ) : (
           <section className="module-card">
             <p className="eyebrow">Module</p>
