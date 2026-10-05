@@ -16,13 +16,34 @@ import { handleProducts } from "./products/routes.js";
 validateConfig();
 
 const PORT = process.env.PORT || 4000;
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
 function json(res, status, body) {
   res.writeHead(status, {
     "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": CORS_ORIGIN,
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   });
 
   res.end(JSON.stringify(body));
+}
+
+function handleCors(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+  );
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return true;
+  }
+
+  return false;
 }
 
 async function readJson(req) {
@@ -112,6 +133,10 @@ async function audit(userId, action, resource = null, resourceId = null, metadat
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (handleCors(req, res)) {
+      return;
+    }
+
     if (req.url === "/health" && req.method === "GET") {
       return json(res, 200, {
         status: "ok",
