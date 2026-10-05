@@ -2954,9 +2954,53 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getCurrentUser()
-      .then(setUser)
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function restoreSession() {
+      try {
+        const currentUser = await getCurrentUser();
+
+        if (!cancelled) {
+          setUser(currentUser);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.warn(
+          "Session restore temporarily failed. Retrying...",
+          error
+        );
+
+        if (cancelled) return;
+
+        setTimeout(async () => {
+          if (cancelled) return;
+
+          try {
+            const currentUser = await getCurrentUser();
+
+            if (!cancelled) {
+              setUser(currentUser);
+              setLoading(false);
+            }
+          } catch (retryError) {
+            console.warn(
+              "Session restore retry failed.",
+              retryError
+            );
+
+            if (!cancelled) {
+              setLoading(false);
+            }
+          }
+        }, 1500);
+      }
+    }
+
+    restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleLogout() {

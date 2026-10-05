@@ -97,7 +97,7 @@ export async function getCurrentUser() {
       error
     );
 
-    return null;
+    throw error;
   }
 }
 
