@@ -11,6 +11,7 @@ import {
 } from "./middleware/auth.js";
 import { sql } from "./db/client.js";
 import { customerRoute } from "./customers/routes.js";
+import { handleProducts } from "./products/routes.js";
 
 validateConfig();
 
@@ -148,6 +149,31 @@ const server = http.createServer(async (req, res) => {
       }
 
       const result = await customerRoute(req, res, user, audit);
+
+      if (result) {
+        return json(res, result.status, result.body);
+      }
+    }
+
+    if (
+      req.url.startsWith("/api/products") &&
+      ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(req.method)
+    ) {
+      const user = await authenticate(req, res);
+
+      if (!user) {
+        return;
+      }
+
+      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const result = await handleProducts(
+        req,
+        res,
+        user,
+        url.pathname,
+        url.searchParams,
+        audit
+      );
 
       if (result) {
         return json(res, result.status, result.body);
