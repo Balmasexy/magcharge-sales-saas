@@ -68,6 +68,7 @@ export async function getCurrentUser() {
   const token = getToken();
 
   if (!token) {
+    console.warn("Session restore: no access token found.");
     return null;
   }
 
@@ -81,19 +82,35 @@ export async function getCurrentUser() {
 
     const data = await response.json().catch(() => ({}));
 
+    console.log("Session restore:", {
+      apiBase: API_BASE,
+      status: response.status,
+      ok: response.ok,
+      hasToken: Boolean(token),
+      user: data.user ? {
+        id: data.user.id,
+        email: data.user.email,
+        role: data.user.role,
+      } : null,
+      error: data.error || null,
+    });
+
     if (response.status === 401) {
+      console.warn("Session restore: server rejected token with 401.");
       clearToken();
       return null;
     }
 
     if (!response.ok) {
-      throw new Error(data.error || `Session check failed (${response.status})`);
+      throw new Error(
+        data.error || `Session check failed (${response.status})`
+      );
     }
 
     return data.user;
   } catch (error) {
     console.warn(
-      "Session check temporarily failed; keeping existing token.",
+      "Session restore request failed; keeping existing token.",
       error
     );
 
