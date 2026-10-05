@@ -21,18 +21,26 @@ const sql = postgres(databaseUrl, {
 async function run() {
   try {
     const schemaPath = path.join(__dirname, "schema.sql");
+
     const customersPath = path.join(
       __dirname,
       "../../migrations/002_customers.sql"
     );
+
     const productsPath = path.join(
       __dirname,
       "../../migrations/003_products_inventory.sql"
     );
 
+    const salesPath = path.join(
+      __dirname,
+      "../../migrations/004_sales.sql"
+    );
+
     const schema = await fs.readFile(schemaPath, "utf8");
     const customers = await fs.readFile(customersPath, "utf8");
     const products = await fs.readFile(productsPath, "utf8");
+    const sales = await fs.readFile(salesPath, "utf8");
 
     console.log("Applying base database schema...");
     await sql.unsafe(schema);
@@ -42,6 +50,9 @@ async function run() {
 
     console.log("Applying products and inventory migration...");
     await sql.unsafe(products);
+
+    console.log("Applying sales migration...");
+    await sql.unsafe(sales);
 
     console.log("Database migration completed successfully.");
   } finally {

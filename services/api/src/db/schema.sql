@@ -112,7 +112,6 @@ ON CONFLICT DO NOTHING;
 INSERT INTO role_permissions (role, permission_id)
 SELECT 'dealer', id FROM permissions
 WHERE code IN (
-  'sales.read',
   'orders.read',
   'customers.read',
   'ai.use'
