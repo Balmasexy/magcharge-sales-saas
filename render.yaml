@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @magcharge/api build
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @magcharge/api build
     startCommand: pnpm --filter @magcharge/api start
     healthCheckPath: /health
     envVars:
@@ -19,7 +19,7 @@ services:
     name: magcharge-sales-web
     runtime: static
     rootDir: .
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter web build
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter web build
     staticPublishPath: apps/web/dist
     envVars:
       - key: VITE_API_URL
