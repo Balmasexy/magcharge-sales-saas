@@ -71,20 +71,34 @@ export async function getCurrentUser() {
     return null;
   }
 
-  const response = await fetch(`${API_BASE}/api/auth/me`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/me`, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-  if (!response.ok) {
-    clearToken();
+    const data = await response.json().catch(() => ({}));
+
+    if (response.status === 401) {
+      clearToken();
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `Session check failed (${response.status})`);
+    }
+
+    return data.user;
+  } catch (error) {
+    console.warn(
+      "Session check temporarily failed; keeping existing token.",
+      error
+    );
+
     return null;
   }
-
-  const data = await response.json();
-
-  return data.user;
 }
 
 export async function logout() {
