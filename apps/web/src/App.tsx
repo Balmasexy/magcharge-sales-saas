@@ -1225,12 +1225,39 @@ function SalesModule({
     setError("");
 
     try {
-      const [salesData, customersData, productsData] =
-        await Promise.all([
-          request("/api/sales?limit=100"),
-          request("/api/customers"),
-          request("/api/products"),
-        ]);
+      let salesData;
+      let customersData;
+      let productsData;
+
+      try {
+        salesData = await request("/api/sales?limit=100");
+      } catch (err) {
+        throw new Error(
+          `Sales API failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+
+      try {
+        customersData = await request("/api/customers");
+      } catch (err) {
+        throw new Error(
+          `Customers API failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+
+      try {
+        productsData = await request("/api/products");
+      } catch (err) {
+        throw new Error(
+          `Products API failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
 
       setSales(salesData.sales || []);
       setCustomers(customersData.customers || []);
