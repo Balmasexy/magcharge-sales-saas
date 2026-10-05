@@ -25,15 +25,23 @@ async function run() {
       __dirname,
       "../../migrations/002_customers.sql"
     );
+    const productsPath = path.join(
+      __dirname,
+      "../../migrations/003_products_inventory.sql"
+    );
 
     const schema = await fs.readFile(schemaPath, "utf8");
     const customers = await fs.readFile(customersPath, "utf8");
+    const products = await fs.readFile(productsPath, "utf8");
 
     console.log("Applying base database schema...");
     await sql.unsafe(schema);
 
     console.log("Applying customers migration...");
     await sql.unsafe(customers);
+
+    console.log("Applying products and inventory migration...");
+    await sql.unsafe(products);
 
     console.log("Database migration completed successfully.");
   } finally {
