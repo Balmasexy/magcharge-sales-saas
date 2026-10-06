@@ -2862,6 +2862,378 @@ function ProductsModule({
   );
 }
 
+
+type Payment = {
+  id: string;
+  sale_id: string;
+  customer_id: string | null;
+  amount: string | number;
+  payment_method: string;
+  status: string;
+  reference: string | null;
+  notes: string | null;
+  received_by: string;
+  received_by_email?: string;
+  customer_name?: string | null;
+  created_at: string;
+};
+
+function PaymentsModule({ user }: { user: User }) {
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [saleId, setSaleId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [status, setStatus] = useState("completed");
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const canRead = user.permissions?.includes("payments.read");
+  const canWrite = user.permissions?.includes("payments.write");
+
+  async function request(
+    path: string,
+    options: RequestInit = {}
+  ) {
+    const token = getToken();
+    const delays = [0, 1500, 3000, 5000, 7000];
+
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt] > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, delays[attempt])
+        );
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...(token
+              ? { Authorization: `Bearer ${token}` }
+              : {}),
+            ...(options.headers || {}),
+          },
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || `Request failed with status ${response.status}`
+          );
+        }
+
+        return data;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+
+        const isNetworkFailure =
+          error instanceof TypeError ||
+          message.toLowerCase().includes("failed to fetch") ||
+          message.toLowerCase().includes("networkerror") ||
+          message.toLowerCase().includes("network error");
+
+        if (!isNetworkFailure || attempt === delays.length - 1) {
+          throw error;
+        }
+
+        console.warn(
+          `Payments request ${path} failed temporarily. Retrying attempt ${
+            attempt + 2
+          }/${delays.length}...`,
+          error
+        );
+      }
+    }
+
+    throw new Error("Request failed after all retries");
+  }
+
+  async function load() {
+    if (!canRead) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const [paymentData, salesData] = await Promise.all([
+        request("/api/payments?limit=100"),
+        request("/api/sales?limit=100"),
+      ]);
+
+      setPayments(
+        Array.isArray(paymentData)
+          ? paymentData
+          : paymentData.payments || []
+      );
+
+      setSales(
+        Array.isArray(salesData)
+          ? salesData
+          : salesData.sales || []
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load payments."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [canRead]);
+
+  async function recordPayment(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!canWrite) {
+      setError("You do not have permission to record payments.");
+      return;
+    }
+
+    if (!saleId || !amount) {
+      setError("Sale and amount are required.");
+      return;
+    }
+
+    const numericAmount = Number(amount);
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setError("Enter a valid payment amount.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      await request("/api/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          saleId,
+          amount: numericAmount,
+          paymentMethod,
+          status,
+          reference: reference.trim() || undefined,
+          notes: notes.trim() || undefined,
+          receivedBy: user.id,
+        }),
+      });
+
+      setAmount("");
+      setReference("");
+      setNotes("");
+      setStatus("completed");
+
+      setSuccess("Payment recorded successfully.");
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to record payment."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canRead) {
+    return (
+      <section className="module-card">
+        <p className="eyebrow">Payments</p>
+        <h2>Access denied</h2>
+        <p>You do not have permission to view payments.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <div className="module-card">
+        <p className="eyebrow">Payments</p>
+        <h2>Payment Management</h2>
+        <p>
+          Record customer payments against completed or partially paid
+          sales and review payment history.
+        </p>
+
+        {success && (
+          <div className="success-message" role="status">
+            {success}
+          </div>
+        )}
+
+        {error && (
+          <div className="error-message" role="alert">
+            {error}
+          </div>
+        )}
+
+        {canWrite && (
+          <form onSubmit={recordPayment}>
+            <div className="form-grid">
+              <label>
+                Sale
+                <select
+                  value={saleId}
+                  onChange={(event) => setSaleId(event.target.value)}
+                  required
+                >
+                  <option value="">Select sale</option>
+                  {sales.map((sale) => (
+                    <option key={sale.id} value={sale.id}>
+                      {sale.id.slice(0, 8)} — ₦
+                      {Number(sale.total || 0).toLocaleString()}
+                      {" — "}
+                      {sale.payment_status || "pending"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Amount
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  placeholder="0.00"
+                  required
+                />
+              </label>
+
+              <label>
+                Payment method
+                <select
+                  value={paymentMethod}
+                  onChange={(event) =>
+                    setPaymentMethod(event.target.value)
+                  }
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="pos">POS</option>
+                  <option value="card">Card</option>
+                  <option value="mobile_money">Mobile money</option>
+                </select>
+              </label>
+
+              <label>
+                Status
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                >
+                  <option value="completed">Completed</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
+
+              <label>
+                Reference
+                <input
+                  value={reference}
+                  onChange={(event) => setReference(event.target.value)}
+                  placeholder="Transaction reference"
+                />
+              </label>
+
+              <label>
+                Notes
+                <input
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Optional notes"
+                />
+              </label>
+            </div>
+
+            <button type="submit" disabled={saving}>
+              {saving ? "Recording..." : "Record Payment"}
+            </button>
+          </form>
+        )}
+      </div>
+
+      <div className="module-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">History</p>
+            <h2>Recent Payments</h2>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
+
+        {loading ? (
+          <p>Loading payments...</p>
+        ) : payments.length === 0 ? (
+          <p>No payments recorded yet.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Sale</th>
+                  <th>Customer</th>
+                  <th>Amount</th>
+                  <th>Method</th>
+                  <th>Status</th>
+                  <th>Reference</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {payments.map((payment) => (
+                  <tr key={payment.id}>
+                    <td>
+                      {new Date(payment.created_at).toLocaleString()}
+                    </td>
+                    <td>{payment.sale_id.slice(0, 8)}</td>
+                    <td>{payment.customer_name || "Walk-in"}</td>
+                    <td>
+                      ₦{Number(payment.amount).toLocaleString()}
+                    </td>
+                    <td>{payment.payment_method}</td>
+                    <td>{payment.status}</td>
+                    <td>{payment.reference || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Dashboard({
   user,
   onLogout,
@@ -3016,6 +3388,8 @@ function Dashboard({
           <CustomersModule user={user} />
         ) : active === "Inventory" ? (
           <ProductsModule user={user} />
+        ) : active === "Payments" ? (
+          <PaymentsModule user={user} />
         ) : (
           <section className="module-card">
             <p className="eyebrow">Module</p>
