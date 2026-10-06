@@ -72,6 +72,24 @@ const permissionMap: Partial<Record<ModuleName, string>> = {
 };
 
 const API_BASE = "https://magcharge-sales-api.onrender.com";
+const USER_CACHE_KEY = "magcharge_cached_user";
+
+function getCachedUser(): User | null {
+  try {
+    const cached = localStorage.getItem(USER_CACHE_KEY);
+    return cached ? (JSON.parse(cached) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+function cacheUser(user: User) {
+  localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+}
+
+function clearCachedUser() {
+  localStorage.removeItem(USER_CACHE_KEY);
+}
 
 function LoginScreen({
   onLogin,
@@ -3015,7 +3033,9 @@ function Dashboard({
 }
 
 function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() =>
+    getToken() ? getCachedUser() : null
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -3042,7 +3062,14 @@ function App() {
 
           if (cancelled) return;
 
-          setUser(currentUser);
+          if (currentUser) {
+            cacheUser(currentUser);
+            setUser(currentUser);
+          } else if (!getToken()) {
+            clearCachedUser();
+            setUser(null);
+          }
+
           setLoading(false);
           return;
         } catch (error) {
@@ -3054,9 +3081,13 @@ function App() {
       }
 
       if (!cancelled) {
+        const hasToken = Boolean(getToken());
+
         console.warn(
-          "Session restore failed after all retries."
+          "Session restore failed after all retries.",
+          { hasToken }
         );
+
         setLoading(false);
       }
     }
@@ -3070,10 +3101,16 @@ function App() {
 
   async function handleLogout() {
     await logout();
+    clearCachedUser();
     setUser(null);
   }
 
-  if (loading) {
+  function handleLogin(user: User) {
+    cacheUser(user);
+    setUser(user);
+  }
+
+  if (loading && !user) {
     return (
       <main className="loading-page">
         <strong>Loading MagCharge...</strong>
@@ -3082,7 +3119,7 @@ function App() {
   }
 
   if (!user) {
-    return <LoginScreen onLogin={setUser} />;
+    return <LoginScreen onLogin={handleLogin} />;
   }
 
   return (
