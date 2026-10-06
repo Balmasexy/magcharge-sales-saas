@@ -71,9 +71,7 @@ const permissionMap: Partial<Record<ModuleName, string>> = {
   Admin: "admin.manage",
 };
 
-const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  "https://magcharge-sales-api.onrender.com";
+const API_BASE = "https://magcharge-sales-api.onrender.com";
 
 function LoginScreen({
   onLogin,
