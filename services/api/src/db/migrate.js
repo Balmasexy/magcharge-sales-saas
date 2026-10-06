@@ -37,10 +37,16 @@ async function run() {
       "../../migrations/004_sales.sql"
     );
 
+    const paymentsPath = path.join(
+      __dirname,
+      "../../migrations/005_payments.sql"
+    );
+
     const schema = await fs.readFile(schemaPath, "utf8");
     const customers = await fs.readFile(customersPath, "utf8");
     const products = await fs.readFile(productsPath, "utf8");
     const sales = await fs.readFile(salesPath, "utf8");
+    const payments = await fs.readFile(paymentsPath, "utf8");
 
     console.log("Applying base database schema...");
     await sql.unsafe(schema);
@@ -53,6 +59,9 @@ async function run() {
 
     console.log("Applying sales migration...");
     await sql.unsafe(sales);
+
+    console.log("Applying payments migration...");
+    await sql.unsafe(payments);
 
     console.log("Database migration completed successfully.");
   } finally {
