@@ -13,6 +13,7 @@ import { sql } from "./db/client.js";
 import { customerRoute } from "./customers/routes.js";
 import { handleProducts } from "./products/routes.js";
 import { handleSales } from "./sales/routes.js";
+import { handlePayments } from "./payments/routes.js";
 
 validateConfig();
 
@@ -194,6 +195,31 @@ const server = http.createServer(async (req, res) => {
 
       const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
       const result = await handleSales(
+        req,
+        res,
+        user,
+        url.pathname,
+        url.searchParams,
+        audit
+      );
+
+      if (result) {
+        return json(res, result.status, result.body);
+      }
+    }
+
+    if (
+      req.url.startsWith("/api/payments") &&
+      ["GET", "POST"].includes(req.method)
+    ) {
+      const user = await authenticate(req, res);
+
+      if (!user) {
+        return;
+      }
+
+      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const result = await handlePayments(
         req,
         res,
         user,
