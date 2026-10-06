@@ -2956,42 +2956,42 @@ function App() {
     let cancelled = false;
 
     async function restoreSession() {
-      try {
-        const currentUser = await getCurrentUser();
+      const delays = [0, 1500, 3000, 5000, 7000];
 
-        if (!cancelled) {
-          setUser(currentUser);
-          setLoading(false);
-        }
-      } catch (error) {
-        console.warn(
-          "Session restore temporarily failed. Retrying...",
-          error
-        );
-
+      for (let attempt = 0; attempt < delays.length; attempt++) {
         if (cancelled) return;
 
-        setTimeout(async () => {
+        if (delays[attempt] > 0) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delays[attempt])
+          );
+        }
+
+        try {
+          console.log(
+            `Session restore attempt ${attempt + 1}/${delays.length}`
+          );
+
+          const currentUser = await getCurrentUser();
+
           if (cancelled) return;
 
-          try {
-            const currentUser = await getCurrentUser();
+          setUser(currentUser);
+          setLoading(false);
+          return;
+        } catch (error) {
+          console.warn(
+            `Session restore attempt ${attempt + 1} failed. Retrying...`,
+            error
+          );
+        }
+      }
 
-            if (!cancelled) {
-              setUser(currentUser);
-              setLoading(false);
-            }
-          } catch (retryError) {
-            console.warn(
-              "Session restore retry failed.",
-              retryError
-            );
-
-            if (!cancelled) {
-              setLoading(false);
-            }
-          }
-        }, 1500);
+      if (!cancelled) {
+        console.warn(
+          "Session restore failed after all retries."
+        );
+        setLoading(false);
       }
     }
 
