@@ -1191,27 +1191,60 @@ function SalesModule({
     options: RequestInit = {}
   ) {
     const token = getToken();
+    const delays = [0, 1500, 3000, 5000, 7000];
 
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token
-          ? { Authorization: `Bearer ${token}` }
-          : {}),
-        ...(options.headers || {}),
-      },
-    });
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt] > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, delays[attempt])
+        );
+      }
 
-    const data = await response.json().catch(() => ({}));
+      try {
+        const response = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...(token
+              ? { Authorization: `Bearer ${token}` }
+              : {}),
+            ...(options.headers || {}),
+          },
+        });
 
-    if (!response.ok) {
-      throw new Error(
-        data.error || `Request failed with status ${response.status}`
-      );
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || `Request failed with status ${response.status}`
+          );
+        }
+
+        return data;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+
+        const isNetworkFailure =
+          error instanceof TypeError ||
+          message.toLowerCase().includes("failed to fetch") ||
+          message.toLowerCase().includes("networkerror") ||
+          message.toLowerCase().includes("network error");
+
+        if (!isNetworkFailure || attempt === delays.length - 1) {
+          throw error;
+        }
+
+        console.warn(
+          `Sales request ${path} failed temporarily. Retrying attempt ${
+            attempt + 2
+          }/${delays.length}...`,
+          error
+        );
+      }
     }
 
-    return data;
+    throw new Error("Request failed after all retries");
   }
 
   async function loadData() {
@@ -2158,29 +2191,62 @@ function ProductsModule({
     options: RequestInit = {}
   ) {
     const token = getToken();
+    const delays = [0, 1500, 3000, 5000, 7000];
 
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token
-          ? { Authorization: `Bearer ${token}` }
-          : {}),
-        ...(options.headers || {}),
-      },
-    });
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt] > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, delays[attempt])
+        );
+      }
 
-    const data = await response.json().catch(() => null);
+      try {
+        const response = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...(token
+              ? { Authorization: `Bearer ${token}` }
+              : {}),
+            ...(options.headers || {}),
+          },
+        });
 
-    if (!response.ok) {
-      throw new Error(
-        data?.error ||
-          data?.message ||
-          `Request failed (${response.status})`
-      );
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              data?.message ||
+              `Request failed (${response.status})`
+          );
+        }
+
+        return data;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+
+        const isNetworkFailure =
+          error instanceof TypeError ||
+          message.toLowerCase().includes("failed to fetch") ||
+          message.toLowerCase().includes("networkerror") ||
+          message.toLowerCase().includes("network error");
+
+        if (!isNetworkFailure || attempt === delays.length - 1) {
+          throw error;
+        }
+
+        console.warn(
+          `Products request ${path} failed temporarily. Retrying attempt ${
+            attempt + 2
+          }/${delays.length}...`,
+          error
+        );
+      }
     }
 
-    return data;
+    throw new Error("Request failed after all retries");
   }
 
   async function loadProducts() {
