@@ -3241,8 +3241,24 @@ function Dashboard({
   user: User;
   onLogout: () => void;
 }) {
-  const [active, setActive] =
-    useState<ModuleName>("Dashboard");
+  const [active, setActive] = useState<ModuleName>(() => {
+    try {
+      const saved = localStorage.getItem("magcharge-active-module");
+      return saved && modules.includes(saved as ModuleName)
+        ? (saved as ModuleName)
+        : "Dashboard";
+    } catch {
+      return "Dashboard";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("magcharge-active-module", active);
+    } catch (error) {
+      console.warn("Could not persist selected module.", error);
+    }
+  }, [active]);
 
   const visibleModules = modules.filter((module) => {
     if (module === "Dashboard") return true;
