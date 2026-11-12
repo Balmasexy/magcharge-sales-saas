@@ -2871,6 +2871,10 @@ type Payment = {
   payment_method: string;
   status: string;
   reference: string | null;
+  provider?: string | null;
+  environment?: string | null;
+  checkout_url?: string | null;
+  verified_at?: string | null;
   notes: string | null;
   received_by: string;
   received_by_email?: string;
@@ -3293,6 +3297,9 @@ function Dashboard({
   onLogout: () => void;
 }) {
   const [active, setActive] = useState<ModuleName>(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("paystack_reference")) {
+      return "Payments";
+    }
     try {
       const saved = localStorage.getItem("magcharge-active-module");
       return saved && modules.includes(saved as ModuleName)
