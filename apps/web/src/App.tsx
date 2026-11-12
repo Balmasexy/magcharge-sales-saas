@@ -2998,6 +2998,35 @@ function PaymentsModule({ user }: { user: User }) {
     void load();
   }, [canRead]);
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const reference = url.searchParams.get("paystack_reference");
+    if (!reference || !canRead) return;
+
+    setSaving(true);
+    setError("");
+    void request(`/api/payments/paystack/status?reference=${encodeURIComponent(reference)}`)
+      .then((result) => {
+        const paymentStatus = String(result?.payment?.status || "pending");
+        if (paymentStatus === "completed") {
+          setSuccess("Paystack payment verified successfully.");
+        } else if (paymentStatus === "review") {
+          setError("Paystack confirmed the charge, but the sale requires manual reconciliation. Do not retry the payment.");
+        } else {
+          setSuccess("Paystack checkout returned. Payment verification is still pending.");
+        }
+        return load();
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to verify Paystack payment status.");
+      })
+      .finally(() => {
+        setSaving(false);
+        url.searchParams.delete("paystack_reference");
+        window.history.replaceState({}, "", url.toString());
+      });
+  }, [canRead]);
+
   async function recordPayment(event: React.FormEvent) {
     event.preventDefault();
 
@@ -3023,6 +3052,18 @@ function PaymentsModule({ user }: { user: User }) {
     setSuccess("");
 
     try {
+      if (paymentMethod === "paystack") {
+        const checkout = await request("/api/payments/paystack/checkout", {
+          method: "POST",
+          body: JSON.stringify({ saleId, amount: numericAmount }),
+        });
+        if (typeof checkout?.checkoutUrl !== "string" || !checkout.checkoutUrl.startsWith("https://checkout.paystack.com/")) {
+          throw new Error("Paystack did not return a valid hosted checkout URL.");
+        }
+        window.location.assign(checkout.checkoutUrl);
+        return;
+      }
+
       await request("/api/payments", {
         method: "POST",
         body: JSON.stringify({
@@ -3134,41 +3175,51 @@ function PaymentsModule({ user }: { user: User }) {
                   <option value="pos">POS</option>
                   <option value="card">Card</option>
                   <option value="mobile_money">Mobile money</option>
+                  <option value="paystack">Paystack (hosted checkout)</option>
                 </select>
               </label>
 
-              <label>
-                Status
-                <select
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
-                >
-                  <option value="completed">Completed</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </label>
+              {paymentMethod !== "paystack" && (
+                <>
+                  <label>
+                    Status
+                    <select
+                      value={status}
+                      onChange={(event) => setStatus(event.target.value)}
+                    >
+                      <option value="completed">Completed</option>
+                      <option value="pending">Pending</option>
+                    </select>
+                  </label>
 
-              <label>
-                Reference
-                <input
-                  value={reference}
-                  onChange={(event) => setReference(event.target.value)}
-                  placeholder="Transaction reference"
-                />
-              </label>
+                  <label>
+                    Reference
+                    <input
+                      value={reference}
+                      onChange={(event) => setReference(event.target.value)}
+                      placeholder="Transaction reference"
+                    />
+                  </label>
 
-              <label>
-                Notes
-                <input
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Optional notes"
-                />
-              </label>
+                  <label>
+                    Notes
+                    <input
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      placeholder="Optional notes"
+                    />
+                  </label>
+                </>
+              )}
+              {paymentMethod === "paystack" && (
+                <p className="helper-text">
+                  You will be redirected to Paystack's secure hosted checkout. MagCharge records the sale payment only after server-side provider verification.
+                </p>
+              )}
             </div>
 
             <button type="submit" disabled={saving}>
-              {saving ? "Recording..." : "Record Payment"}
+              {saving ? "Processing..." : paymentMethod === "paystack" ? "Continue to Paystack" : "Record Payment"}
             </button>
           </form>
         )}
