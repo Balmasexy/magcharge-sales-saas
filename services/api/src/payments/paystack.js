@@ -1,5 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { sql } from "../db/client.js";
+import { getPaystackCredential, validPaystackReference } from "./paystack-config.js";
 
 function fail(code, message, statusCode = 400) {
   const error = new Error(message);
@@ -8,17 +9,6 @@ function fail(code, message, statusCode = 400) {
   return error;
 }
 
-export function getPaystackCredential(environment) {
-  const mode = environment || String(process.env.PAYSTACK_ENVIRONMENT || "test").trim().toLowerCase();
-  if (mode !== "test" && mode !== "live") return null;
-  if (mode === "live" && process.env.PAYSTACK_LIVE_ENABLED !== "true") return null;
-  const prefix = mode === "test" ? "sk_test_" : "sk_live_";
-  const raw = mode === "test"
-    ? process.env.PAYSTACK_TEST_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY
-    : process.env.PAYSTACK_LIVE_SECRET_KEY;
-  const secretKey = String(raw || "").trim();
-  return secretKey.startsWith(prefix) ? { environment: mode, secretKey } : null;
-}
 
 function callbackUrl(reference) {
   const base = String(process.env.MAGCHARGE_WEB_URL || process.env.APP_BASE_URL || "").trim();
@@ -49,9 +39,6 @@ async function providerRequest(secretKey, path, init = {}) {
   return { ok: response.ok && body?.status === true, status: response.status, body };
 }
 
-function validReference(reference, environment) {
-  return new RegExp(`^MAGCHARGE-PAYSTACK-${environment.toUpperCase()}-[0-9A-F]{32}$`).test(reference);
-}
 
 async function settleVerifiedCharge(reference, environment, amountMinor, providerData) {
   return sql.begin(async (tx) => {
@@ -124,7 +111,7 @@ async function settleVerifiedCharge(reference, environment, amountMinor, provide
 async function verifyAndSettle(reference, environment) {
   const credential = getPaystackCredential(environment);
   if (!credential) throw fail("PAYSTACK_CREDENTIALS_NOT_CONFIGURED", "Paystack credentials for this environment are not configured.", 503);
-  if (!validReference(reference, environment)) throw fail("INVALID_PAYSTACK_REFERENCE", "Invalid Paystack reference.", 400);
+  if (!validPaystackReference(reference, environment)) throw fail("INVALID_PAYSTACK_REFERENCE", "Invalid Paystack reference.", 400);
 
   const verified = await providerRequest(
     credential.secretKey,
