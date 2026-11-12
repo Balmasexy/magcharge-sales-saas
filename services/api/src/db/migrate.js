@@ -42,11 +42,17 @@ async function run() {
       "../../migrations/005_payments.sql"
     );
 
+    const paystackPath = path.join(
+      __dirname,
+      "../../migrations/006_paystack_hosted_checkout.sql"
+    );
+
     const schema = await fs.readFile(schemaPath, "utf8");
     const customers = await fs.readFile(customersPath, "utf8");
     const products = await fs.readFile(productsPath, "utf8");
     const sales = await fs.readFile(salesPath, "utf8");
     const payments = await fs.readFile(paymentsPath, "utf8");
+    const paystack = await fs.readFile(paystackPath, "utf8");
 
     console.log("Applying base database schema...");
     await sql.unsafe(schema);
@@ -62,6 +68,9 @@ async function run() {
 
     console.log("Applying payments migration...");
     await sql.unsafe(payments);
+
+    console.log("Applying Paystack hosted-checkout migration...");
+    await sql.unsafe(paystack);
 
     console.log("Database migration completed successfully.");
   } finally {
