@@ -14,6 +14,7 @@ import { customerRoute } from "./customers/routes.js";
 import { handleProducts } from "./products/routes.js";
 import { handleSales } from "./sales/routes.js";
 import { handlePayments } from "./payments/routes.js";
+import { handlePaystackWebhook } from "./payments/paystack.js";
 
 validateConfig();
 
@@ -144,6 +145,11 @@ const server = http.createServer(async (req, res) => {
         status: "ok",
         service: "magcharge-sales-api",
       });
+    }
+
+    const paystackWebhookResult = await handlePaystackWebhook(req);
+    if (paystackWebhookResult) {
+      return json(res, paystackWebhookResult.status, paystackWebhookResult.body);
     }
 
     if (req.url === "/api/auth/status" && req.method === "GET") {
