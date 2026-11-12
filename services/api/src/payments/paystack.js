@@ -165,6 +165,7 @@ export async function initializePaystackCheckout({ saleId, amount, user }) {
     `;
     if (!sales.length) throw fail("SALE_NOT_FOUND", "Sale not found.", 404);
     const sale = sales[0];
+    await tx`SELECT pg_advisory_xact_lock(hashtextextended(${String(sale.id)}, 0))`;
     if (user.role !== "admin" && user.role !== "super_admin" && sale.created_by !== user.id) {
       throw fail("SALE_ACCESS_DENIED", "You can only initiate Paystack checkout for a sale you created.", 403);
     }
